@@ -1,12 +1,12 @@
-name: Build Slim Spider JAR (App Module)
+name: Build & Release Slim Spider JAR
 
 on:
   push:
     branches: [ "master", "main" ]
-  workflow_dispatch:
+  workflow_dispatch: # 允许手动点击按钮触发
 
 jobs:
-  build:
+  build-and-release:
     runs-on: ubuntu-latest
 
     steps:
@@ -23,14 +23,11 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Compile Project
-        # 编译 app 模块，生成 classes.jar
         run: ./gradlew :app:assembleRelease --no-daemon
 
       - name: Extract & Slim JAR
         run: |
-          # 1. 找到编译生成的中间产物 classes.jar
-          # 通常在 app/build/intermediates/aar_main_jar/release/ 或类似路径
-          # 我们使用 find 命令自动定位它
+          # 1. 自动定位 Android 编译生成的 classes.jar
           ORIGINAL_JAR=$(find app/build -name "classes.jar" | head -n 1)
           
           if [ -z "$ORIGINAL_JAR" ]; then
@@ -40,29 +37,26 @@ jobs:
           
           echo "Found original jar: $ORIGINAL_JAR"
           
-          # 2. 创建临时目录解压
-          mkdir -p temp_jar
-          cd temp_jar
+          # 2. 解压并瘦身
+          mkdir -p temp_jar && cd temp_jar
           jar xf "$ORIGINAL_JAR"
           
-          # 3. 【核心瘦身】删除不需要的文件和目录
-          # 删除 Android 资源文件、Manifest、BuildConfig 等
+          # 【核心瘦身】删除 Android 特有和无用文件
           rm -rf android/ res/ assets/ META-INF/ 
           rm -f R.class BuildConfig.class
           
-          # 删除第三方依赖（假设宿主环境已有）
-          # 如果 spider 依赖 okhttp/jsoup，且你想让 jar 极小，请取消下面注释：
-          # rm -rf okhttp3/ okio/ jsoup/ org/ kotlin/
-          
-          # 4. 重新打包为 spider.jar
+          # 3. 重新打包为 spider.jar
           jar cf ../spider.jar *
-          cd ..
+          cd .. && rm -rf temp_jar
           
-          # 5. 清理临时文件
-          rm -rf temp_jar
+          echo "Slim jar created successfully."
+          ls -lh spider.jar
 
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+      - name: Create GitHub Release & Upload JAR
+        uses: softprops/action-gh-release@v2
         with:
-          name: spider-jar-slim
-          path: spider.jar
+          tag_name: v${{ github.run_number }}
+          name: Spider JAR Build #${{ github.run_number }}
+          files: spider.jar
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
