@@ -69,4 +69,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: spider-jar-release
-          path: app/spider.jar
+          path: build/libs/spider.jar
