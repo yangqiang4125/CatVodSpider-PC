@@ -30,4 +30,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: CatVodSpider
-          path: .github/workflows/*.jar # 根据实际输出路径调整，可能是 app/build/libs/*.jar
+          path: app/*.jar # 根据实际输出路径调整，可能是 app/build/libs/*.jar
