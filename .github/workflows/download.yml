@@ -1,0 +1,42 @@
+name: Build & Release Spider JAR
+
+on:
+  push:
+    branches: [ "master", "main" ]
+  workflow_dispatch: # 允许手动点击按钮触发
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Grant Execute Permission
+        run: chmod +x ./gradlew
+
+      - name: Build with Gradle
+        # 执行构建，并跳过测试以加快速度
+        run: ./gradlew clean assemble --no-daemon
+
+      - name: Prepare Artifact
+        # 关键步骤：将生成的 jar 重命名为固定的 spider.jar
+        run: |
+          mkdir -p output
+          # 查找 build/libs 下所有的 jar 包并复制重命名
+          find build/libs -name "*.jar" ! -name "*-sources.jar" ! -name "*-javadoc.jar" -exec cp {} output/spider.jar \;
+          ls -lh output/
+
+      - name: Upload Spider JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: spider-jar-download
+          path: output/spider.jar
+          if-no-files-found: error
