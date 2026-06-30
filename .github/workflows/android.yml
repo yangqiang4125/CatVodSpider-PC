@@ -3,14 +3,14 @@ name: Build Slim Spider JAR
 on:
   push:
     branches: [ "master", "main" ]
-  workflow_dispatch:
+  workflow_dispatch: # 允许手动触发
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
@@ -19,33 +19,54 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Make Gradle executable
+      - name: Grant Permission
         run: chmod +x ./gradlew
 
-      - name: Clean and Build (Without Dependencies)
-        # 关键：只编译，不打包依赖
-        run: ./gradlew clean classes
+      - name: Build Project
+        # 执行构建，跳过测试加快速度
+        run: ./gradlew clean assemble --no-daemon
 
-      - name: Create Slim JAR
-        # 手动使用 jar 命令打包，只包含我们需要的类
+      - name: Optimize & Rename JAR
         run: |
-          # 进入编译输出目录
-          cd build/classes/java/main
+          cd build/libs
           
-          # 1. 打包 com/github/catvod/crawler 下的所有文件
-          # 2. 排除 android、kotlin、okhttp3 等第三方库
-          jar cf spider-slim.jar \
-            com/github/catvod/crawler/*.class \
-            com/github/catvod/crawler/bean/*.class 2>/dev/null || true
+          # 1. 找到生成的 jar 包 (排除 sources 和 javadoc)
+          ORIGINAL_JAR=$(ls *.jar | grep -v "sources" | grep -v "javadoc" | head -n 1)
+          echo "Found original jar: $ORIGINAL_JAR"
           
-          # 检查文件大小
-          ls -lh spider-slim.jar
+          if [ -z "$ORIGINAL_JAR" ]; then
+            echo "Error: No jar file found!"
+            exit 1
+          fi
 
-          # 移动回工作目录根路径以便上传
-          mv spider-slim.jar $GITHUB_WORKSPACE/
+          # 2. 创建临时目录进行瘦身操作
+          mkdir temp_jar
+          cd temp_jar
+          
+          # 3. 解压原始 jar
+          jar xf ../$ORIGINAL_JAR
+          
+          # 4. 【核心瘦身】删除不需要的依赖和资源
+          # 删除 Android 相关
+          rm -rf android/
+          # 删除 Kotlin 标准库 (如果不需要)
+          rm -rf kotlin/
+          # 删除常见的第三方依赖 (假设运行环境已提供)
+          rm -rf okhttp3/ okio/ jsoup/ org/json/ com/google/gson/
+          # 删除 Android 签名文件
+          rm -rf META-INF/*.RSA META-INF/*.SF META-INF/*.DSA
+          
+          # 5. 重新打包为 spider.jar
+          jar cf ../spider.jar .
+          
+          cd ..
+          rm -rf temp_jar $ORIGINAL_JAR
+          
+          echo "Slim jar created successfully."
+          ls -lh spider.jar
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: spider-slim
-          path: app/spider-slim.jar
+          name: spider-jar-release
+          path: app/spider.jar
