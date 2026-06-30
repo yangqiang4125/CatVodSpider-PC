@@ -1,9 +1,9 @@
-name: Build Slim Spider JAR
+name: Build Slim Spider JAR (App Module)
 
 on:
   push:
     branches: [ "master", "main" ]
-  workflow_dispatch: # 允许手动触发
+  workflow_dispatch:
 
 jobs:
   build:
@@ -22,51 +22,47 @@ jobs:
       - name: Grant Permission
         run: chmod +x ./gradlew
 
-      - name: Build Project
-        # 执行构建，跳过测试加快速度
-        run: ./gradlew clean assemble --no-daemon
+      - name: Compile Project
+        # 编译 app 模块，生成 classes.jar
+        run: ./gradlew :app:assembleRelease --no-daemon
 
-      - name: Optimize & Rename JAR
+      - name: Extract & Slim JAR
         run: |
-          cd build/libs
-          
-          # 1. 找到生成的 jar 包 (排除 sources 和 javadoc)
-          ORIGINAL_JAR=$(ls *.jar | grep -v "sources" | grep -v "javadoc" | head -n 1)
-          echo "Found original jar: $ORIGINAL_JAR"
+          # 1. 找到编译生成的中间产物 classes.jar
+          # 通常在 app/build/intermediates/aar_main_jar/release/ 或类似路径
+          # 我们使用 find 命令自动定位它
+          ORIGINAL_JAR=$(find app/build -name "classes.jar" | head -n 1)
           
           if [ -z "$ORIGINAL_JAR" ]; then
-            echo "Error: No jar file found!"
+            echo "Error: classes.jar not found!"
             exit 1
           fi
-
-          # 2. 创建临时目录进行瘦身操作
-          mkdir temp_jar
+          
+          echo "Found original jar: $ORIGINAL_JAR"
+          
+          # 2. 创建临时目录解压
+          mkdir -p temp_jar
           cd temp_jar
+          jar xf "$ORIGINAL_JAR"
           
-          # 3. 解压原始 jar
-          jar xf ../$ORIGINAL_JAR
+          # 3. 【核心瘦身】删除不需要的文件和目录
+          # 删除 Android 资源文件、Manifest、BuildConfig 等
+          rm -rf android/ res/ assets/ META-INF/ 
+          rm -f R.class BuildConfig.class
           
-          # 4. 【核心瘦身】删除不需要的依赖和资源
-          # 删除 Android 相关
-          rm -rf android/
-          # 删除 Kotlin 标准库 (如果不需要)
-          rm -rf kotlin/
-          # 删除常见的第三方依赖 (假设运行环境已提供)
-          rm -rf okhttp3/ okio/ jsoup/ org/json/ com/google/gson/
-          # 删除 Android 签名文件
-          rm -rf META-INF/*.RSA META-INF/*.SF META-INF/*.DSA
+          # 删除第三方依赖（假设宿主环境已有）
+          # 如果 spider 依赖 okhttp/jsoup，且你想让 jar 极小，请取消下面注释：
+          # rm -rf okhttp3/ okio/ jsoup/ org/ kotlin/
           
-          # 5. 重新打包为 spider.jar
-          jar cf ../spider.jar .
-          
+          # 4. 重新打包为 spider.jar
+          jar cf ../spider.jar *
           cd ..
-          rm -rf temp_jar $ORIGINAL_JAR
           
-          echo "Slim jar created successfully."
-          ls -lh spider.jar
+          # 5. 清理临时文件
+          rm -rf temp_jar
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: spider-jar-release
-          path: build/libs/spider.jar
+          name: spider-jar-slim
+          path: spider.jar
